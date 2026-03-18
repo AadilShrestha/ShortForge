@@ -36,14 +36,22 @@ describe("Semaphore logic", () => {
     class Semaphore {
       private count: number;
       private queue: Array<() => void> = [];
-      constructor(max: number) { this.count = max; }
+      constructor(max: number) {
+        this.count = max;
+      }
       async acquire(): Promise<void> {
-        if (this.count > 0) { this.count--; return; }
+        if (this.count > 0) {
+          this.count--;
+          return;
+        }
         return new Promise((resolve) => this.queue.push(resolve));
       }
       release(): void {
-        if (this.queue.length > 0) { this.queue.shift()!(); }
-        else { this.count++; }
+        if (this.queue.length > 0) {
+          this.queue.shift()!();
+        } else {
+          this.count++;
+        }
       }
     }
 
@@ -51,7 +59,7 @@ describe("Semaphore logic", () => {
     let concurrent = 0;
     let maxConcurrent = 0;
 
-    const task = async (id: number) => {
+    const task = async (_id: number) => {
       await sem.acquire();
       concurrent++;
       maxConcurrent = Math.max(maxConcurrent, concurrent);

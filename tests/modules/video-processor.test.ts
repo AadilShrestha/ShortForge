@@ -13,17 +13,34 @@ async function createTestVideo() {
   mkdirSync(join(TMP, "clips"), { recursive: true });
 
   // Generate a 15s test video with speech-like audio + silence gaps
-  const proc = Bun.spawn([
-    "ffmpeg", "-y",
-    "-f", "lavfi", "-i", "testsrc2=duration=15:size=1920x1080:rate=30",
-    "-f", "lavfi", "-i",
-    // 0-3s tone, 3-6s silence, 6-10s tone, 10-12s silence, 12-15s tone
-    "aevalsrc='if(between(t,0,3)+between(t,6,10)+between(t,12,15),sin(440*2*PI*t),0)':s=44100:d=15",
-    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-    "-c:a", "aac", "-b:a", "64k",
-    "-shortest",
-    TEST_VIDEO,
-  ], { stdout: "pipe", stderr: "pipe" });
+  const proc = Bun.spawn(
+    [
+      "ffmpeg",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=duration=15:size=1920x1080:rate=30",
+      "-f",
+      "lavfi",
+      "-i",
+      // 0-3s tone, 3-6s silence, 6-10s tone, 10-12s silence, 12-15s tone
+      "aevalsrc='if(between(t,0,3)+between(t,6,10)+between(t,12,15),sin(440*2*PI*t),0)':s=44100:d=15",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "ultrafast",
+      "-crf",
+      "28",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "64k",
+      "-shortest",
+      TEST_VIDEO,
+    ],
+    { stdout: "pipe", stderr: "pipe" },
+  );
   await proc.exited;
 }
 
@@ -68,7 +85,13 @@ describe("VideoProcessor", () => {
       outputHeight: 1920,
       preferYouTubeTranscripts: true,
       captionAnimate: true,
-      paths: { data: "./data", output: "./output", assets: "./assets", subwaySurfers: "./assets/subway-surfers", checkpointDb: "./data/test.db" },
+      paths: {
+        data: "./data",
+        output: "./output",
+        assets: "./assets",
+        subwaySurfers: "./assets/subway-surfers",
+        checkpointDb: "./data/test.db",
+      },
     };
 
     const outputPath = join(TMP, "desilenced.mp4");
@@ -94,7 +117,13 @@ describe("VideoProcessor", () => {
       outputHeight: 1920,
       preferYouTubeTranscripts: true,
       captionAnimate: true,
-      paths: { data: TMP, output: TMP, assets: TMP, subwaySurfers: join(TMP, "no-surfers"), checkpointDb: join(TMP, "test.db") },
+      paths: {
+        data: TMP,
+        output: TMP,
+        assets: TMP,
+        subwaySurfers: join(TMP, "no-surfers"),
+        checkpointDb: join(TMP, "test.db"),
+      },
     };
 
     const outputPath = join(TMP, "reel.mp4");

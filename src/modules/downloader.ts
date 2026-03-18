@@ -10,7 +10,7 @@ export class Downloader {
     ensureDir(outputDir);
     log.info(`Fetching metadata for ${videoUrl}`);
 
-    const metaProc = Bun.spawn(["yt-dlp", "--dump-json", "--no-download", videoUrl], {
+    const metaProc = Bun.spawn(["yt-dlp", "--cookies-from-browser", "chrome", "--dump-json", "--no-download", videoUrl], {
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -36,9 +36,12 @@ export class Downloader {
     const dlProc = Bun.spawn(
       [
         "yt-dlp",
+        "--cookies-from-browser",
+        "chrome",
         "-f",
         "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
-        "--remux-video", "mp4",
+        "--remux-video",
+        "mp4",
         "-o",
         outputPath,
         "--no-playlist",

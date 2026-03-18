@@ -10,6 +10,8 @@ assets/subway-surfers/*.webm
 *.db-journal
 *.db-wal
 *.db-shm
+models/
 firebase-debug.log
 .firebase/
 *.log
+.DS_Store

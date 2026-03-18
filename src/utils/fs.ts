@@ -7,13 +7,7 @@ export function ensureDir(dirPath: string): void {
 
 export function runDir(basePath: string, runId: string): string {
   const dir = join(basePath, "runs", runId);
-  for (const sub of [
-    "downloads",
-    "clips",
-    "desilenced",
-    "captions",
-    "transcripts",
-  ]) {
+  for (const sub of ["downloads", "clips", "desilenced", "captions", "transcripts"]) {
     ensureDir(join(dir, sub));
   }
   return dir;
@@ -23,11 +17,7 @@ export async function fileExists(filePath: string): Promise<boolean> {
   return Bun.file(filePath).exists();
 }
 
-export function cleanRunArtifacts(
-  basePath: string,
-  runId: string,
-  keepFinal: boolean,
-): void {
+export function cleanRunArtifacts(basePath: string, runId: string, keepFinal: boolean): void {
   const dir = join(basePath, "runs", runId);
   if (!existsSync(dir)) return;
   if (keepFinal) {
@@ -43,10 +33,7 @@ export function cleanRunArtifacts(
 export function listFiles(dirPath: string, extension?: string): string[] {
   if (!existsSync(dirPath)) return [];
   const files = readdirSync(dirPath);
-  if (extension)
-    return files
-      .filter((f) => f.endsWith(extension))
-      .map((f) => join(dirPath, f));
+  if (extension) return files.filter((f) => f.endsWith(extension)).map((f) => join(dirPath, f));
   return files.map((f) => join(dirPath, f));
 }
 

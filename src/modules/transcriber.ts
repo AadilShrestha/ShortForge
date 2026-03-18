@@ -7,7 +7,11 @@ import { join } from "path";
 const log = createLogger("transcriber");
 
 export class Transcriber {
-  async transcribe(metadata: VideoMetadata, outputDir: string, config: Config): Promise<Transcript> {
+  async transcribe(
+    metadata: VideoMetadata,
+    outputDir: string,
+    config: Config,
+  ): Promise<Transcript> {
     if (config.preferYouTubeTranscripts) {
       try {
         log.info("Attempting YouTube transcript fetch...");
@@ -52,7 +56,11 @@ print(json.dumps(snippets))
     return { source: "youtube", language: "en", segments, fullText, srtPath };
   }
 
-  private async fromWhisper(metadata: VideoMetadata, outputDir: string, config: Config): Promise<Transcript> {
+  private async fromWhisper(
+    metadata: VideoMetadata,
+    outputDir: string,
+    config: Config,
+  ): Promise<Transcript> {
     log.info(`Running Whisper (model: ${config.whisperModel})...`);
     const script = `
 import whisper, json, sys
@@ -68,7 +76,12 @@ print(json.dumps(segments))
 
     if (exitCode !== 0) throw new Error(`Whisper transcription failed: ${stderr}`);
 
-    const raw = JSON.parse(stdout) as Array<{ text: string; start: number; end: number; duration: number }>;
+    const raw = JSON.parse(stdout) as Array<{
+      text: string;
+      start: number;
+      end: number;
+      duration: number;
+    }>;
     const segments: TranscriptSegment[] = raw.map((s) => ({
       text: s.text,
       start: s.start,

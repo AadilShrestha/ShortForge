@@ -39,7 +39,7 @@ export class ClipIdentifier {
     log.info(`Analyzing transcript for clip-worthy segments...`);
 
     const formattedTranscript = transcript.segments
-      .map(s => `[${s.start.toFixed(1)}s - ${s.end.toFixed(1)}s] ${s.text}`)
+      .map((s) => `[${s.start.toFixed(1)}s - ${s.end.toFixed(1)}s] ${s.text}`)
       .join("\n");
 
     const prompt = `You are a viral content strategist specializing in history/education TikTok and YouTube Shorts.
@@ -78,32 +78,40 @@ Return clips sorted by viralScore (highest first). Aim for 5-15 clips depending 
     });
 
     const text = response.text ?? "";
-    const parsed = JSON.parse(text) as { clips: Array<{
-      title: string;
-      hookLine: string;
-      startTime: number;
-      endTime: number;
-      reasoning: string;
-      viralScore: number;
-      tags: string[];
-    }> };
+    const parsed = JSON.parse(text) as {
+      clips: Array<{
+        title: string;
+        hookLine: string;
+        startTime: number;
+        endTime: number;
+        reasoning: string;
+        viralScore: number;
+        tags: string[];
+      }>;
+    };
 
-    log.info(`Gemini returned ${parsed.clips.length} raw clips (video duration: ${metadata.duration}s)`);
+    log.info(
+      `Gemini returned ${parsed.clips.length} raw clips (video duration: ${metadata.duration}s)`,
+    );
     for (const c of parsed.clips) {
       const dur = c.endTime - c.startTime;
-      log.debug(`  "${c.title}" ${c.startTime}s-${c.endTime}s (${dur.toFixed(0)}s) score=${c.viralScore}`);
+      log.debug(
+        `  "${c.title}" ${c.startTime}s-${c.endTime}s (${dur.toFixed(0)}s) score=${c.viralScore}`,
+      );
     }
 
     const candidates: ClipCandidate[] = parsed.clips
-      .filter(c => {
+      .filter((c) => {
         const duration = c.endTime - c.startTime;
         if (duration < 15 || duration > 120 || c.startTime < 0 || c.endTime > metadata.duration) {
-          log.debug(`  Filtered out: "${c.title}" (dur=${duration.toFixed(0)}s, end=${c.endTime}, max=${metadata.duration})`);
+          log.debug(
+            `  Filtered out: "${c.title}" (dur=${duration.toFixed(0)}s, end=${c.endTime}, max=${metadata.duration})`,
+          );
           return false;
         }
         return true;
       })
-      .map(c => ({
+      .map((c) => ({
         id: crypto.randomUUID(),
         title: c.title,
         hookLine: c.hookLine,
@@ -119,5 +127,4 @@ Return clips sorted by viralScore (highest first). Aim for 5-15 clips depending 
     log.info(`Identified ${candidates.length} clip candidates`);
     return candidates;
   }
-
 }

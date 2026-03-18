@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { Transcriber } from "../../src/modules/transcriber";
-import { mkdirSync, rmSync, existsSync, writeFileSync } from "fs";
+import { mkdirSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 
 const TMP = join(import.meta.dir, "__tmp_transcriber__");
@@ -44,7 +44,13 @@ describe("Transcriber", () => {
       outputHeight: 1920,
       preferYouTubeTranscripts: true,
       captionAnimate: true,
-      paths: { data: "./data", output: "./output", assets: "./assets", subwaySurfers: "./assets/subway-surfers", checkpointDb: "./data/test.db" },
+      paths: {
+        data: "./data",
+        output: "./output",
+        assets: "./assets",
+        subwaySurfers: "./assets/subway-surfers",
+        checkpointDb: "./data/test.db",
+      },
     };
 
     if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true });
@@ -52,7 +58,13 @@ describe("Transcriber", () => {
 
     try {
       const transcript = await transcriber.transcribe(
-        { videoId: "dQw4w9WgXcQ", title: "Test", duration: 212, uploadDate: "2009-10-25", filePath: "/tmp/fake.mp4" },
+        {
+          videoId: "dQw4w9WgXcQ",
+          title: "Test",
+          duration: 212,
+          uploadDate: "2009-10-25",
+          filePath: "/tmp/fake.mp4",
+        },
         TMP,
         config,
       );

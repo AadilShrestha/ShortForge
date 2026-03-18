@@ -63,9 +63,7 @@ export async function runFfmpeg(
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
     log.error(`ffmpeg failed (exit ${exitCode}): ${stderr.slice(-500)}`);
-    throw new Error(
-      `ffmpeg exited with code ${exitCode}: ${stderr.slice(-500)}`,
-    );
+    throw new Error(`ffmpeg exited with code ${exitCode}: ${stderr.slice(-500)}`);
   }
   return { stdout, stderr, exitCode };
 }
@@ -88,12 +86,8 @@ export async function runFfprobe(filePath: string): Promise<FfprobeResult> {
   await proc.exited;
 
   const data = JSON.parse(stdout);
-  const videoStream = data.streams?.find(
-    (s: Record<string, unknown>) => s.codec_type === "video",
-  );
-  const audioStream = data.streams?.find(
-    (s: Record<string, unknown>) => s.codec_type === "audio",
-  );
+  const videoStream = data.streams?.find((s: Record<string, unknown>) => s.codec_type === "video");
+  const audioStream = data.streams?.find((s: Record<string, unknown>) => s.codec_type === "audio");
   const fpsStr: string = videoStream?.r_frame_rate || "30/1";
   const [num, den] = fpsStr.split("/").map(Number);
 
@@ -140,10 +134,8 @@ export async function detectSilence(
   const ends: number[] = [];
 
   let match;
-  while ((match = startRegex.exec(stderr)) !== null)
-    starts.push(parseFloat(match[1]));
-  while ((match = endRegex.exec(stderr)) !== null)
-    ends.push(parseFloat(match[1]));
+  while ((match = startRegex.exec(stderr)) !== null) starts.push(parseFloat(match[1]));
+  while ((match = endRegex.exec(stderr)) !== null) ends.push(parseFloat(match[1]));
 
   for (let i = 0; i < starts.length; i++) {
     ranges.push({

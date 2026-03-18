@@ -2,15 +2,14 @@ import { z } from "zod";
 
 const configSchema = z.object({
   geminiApiKey: z.string().min(1),
-  whisperModel: z
-    .enum(["tiny", "base", "small", "medium", "large"])
-    .default("base"),
+  whisperModel: z.enum(["tiny", "base", "small", "medium", "large"]).default("base"),
   maxParallelClips: z.coerce.number().int().min(1).max(10).default(3),
   silenceThresholdDb: z.coerce.number().default(-35),
   silenceMinDuration: z.coerce.number().default(0.8),
   outputWidth: z.coerce.number().default(1080),
   outputHeight: z.coerce.number().default(1920),
   clipSpeed: z.coerce.number().min(1).max(2).default(1.2),
+  maxClips: z.coerce.number().int().min(0).default(0),
   preferYouTubeTranscripts: z.coerce.boolean().default(true),
   captionAnimate: z.coerce.boolean().default(true),
   paths: z
@@ -36,6 +35,7 @@ export function loadConfig(): Config {
     outputWidth: Bun.env.OUTPUT_WIDTH,
     outputHeight: Bun.env.OUTPUT_HEIGHT,
     clipSpeed: Bun.env.CLIP_SPEED,
+    maxClips: Bun.env.MAX_CLIPS,
     preferYouTubeTranscripts: Bun.env.PREFER_YOUTUBE_TRANSCRIPTS,
     captionAnimate: Bun.env.CAPTION_ANIMATE,
     paths: {},

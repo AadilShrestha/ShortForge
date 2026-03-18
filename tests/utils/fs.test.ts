@@ -1,7 +1,14 @@
 import { describe, test, expect, afterEach } from "bun:test";
-import { mkdirSync, rmSync, existsSync, writeFileSync } from "fs";
+import { rmSync, existsSync, writeFileSync } from "fs";
 import { join } from "path";
-import { ensureDir, runDir, fileExists, listFiles, randomItem, cleanRunArtifacts } from "../../src/utils/fs";
+import {
+  ensureDir,
+  runDir,
+  fileExists,
+  listFiles,
+  randomItem,
+  cleanRunArtifacts,
+} from "../../src/utils/fs";
 
 const TMP = join(import.meta.dir, "__tmp_fs__");
 

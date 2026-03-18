@@ -48,7 +48,13 @@ describe("CheckpointManager", () => {
     expect(result).not.toBeNull();
     expect(result!.status).toBe(StageStatus.IN_PROGRESS);
 
-    const metadata = { videoId: "vid", title: "title", duration: 600, uploadDate: "2024-01-01", filePath: "/tmp/vid.mp4" };
+    const metadata = {
+      videoId: "vid",
+      title: "title",
+      duration: 600,
+      uploadDate: "2024-01-01",
+      filePath: "/tmp/vid.mp4",
+    };
     cm.completeStage(run.id, PipelineStage.DOWNLOAD, ["/tmp/vid.mp4"], metadata);
 
     result = cm.getStageResult(run.id, PipelineStage.DOWNLOAD);

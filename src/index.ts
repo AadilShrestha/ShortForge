@@ -52,7 +52,9 @@ program
       log.info(`Found ${urls.length} videos`);
 
       const existingRuns = checkpoint.getAllRuns();
-      const processedUrls = new Set(existingRuns.filter((r) => r.status === "completed").map((r) => r.videoUrl));
+      const processedUrls = new Set(
+        existingRuns.filter((r) => r.status === "completed").map((r) => r.videoUrl),
+      );
 
       for (let i = 0; i < urls.length; i++) {
         const url = urls[i];
@@ -123,7 +125,7 @@ program
       console.log(chalk.bold(`\n${runs.length} pipeline runs:\n`));
       for (const run of runs) {
         console.log(
-          `  ${chalk.dim(run.id.slice(0, 8))} ${colorStatus(run.status)} ${chalk.cyan(run.currentStage)} ${run.videoTitle || run.videoId}`
+          `  ${chalk.dim(run.id.slice(0, 8))} ${colorStatus(run.status)} ${chalk.cyan(run.currentStage)} ${run.videoTitle || run.videoId}`,
         );
       }
     }

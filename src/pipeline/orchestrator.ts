@@ -1,7 +1,7 @@
 import { createLogger } from "../utils/logger";
 import { runDir, ensureDir } from "../utils/fs";
 import { CheckpointManager } from "./checkpoint";
-import { PipelineStage, StageStatus, GLOBAL_STAGES, CLIP_STAGES } from "./types";
+import { PipelineStage, StageStatus } from "./types";
 import type { Config } from "../config";
 import type { VideoMetadata, Transcript, ClipCandidate, ClipArtifacts } from "./types";
 import { Downloader } from "../modules/downloader";
@@ -54,7 +54,7 @@ export class PipelineOrchestrator {
     this.clipIdentifier = new ClipIdentifier(config);
   }
 
-  async run(videoUrl: string, fromStage?: PipelineStage): Promise<string> {
+  async run(videoUrl: string, _fromStage?: PipelineStage): Promise<string> {
     const videoId = this.extractVideoId(videoUrl);
     const run = this.checkpoint.createRun(videoUrl, videoId, "");
     const dir = runDir(this.config.paths.data, run.id);
@@ -65,8 +65,12 @@ export class PipelineOrchestrator {
     try {
       const metadata = await this.stageDownload(run.id, videoUrl, dir);
       const transcript = await this.stageTranscribe(run.id, metadata, dir);
-      const clips = await this.stageIdentifyClips(run.id, transcript, metadata, dir);
-      await this.processClips(run.id, clips, metadata, transcript, dir);
+      let clips = await this.stageIdentifyClips(run.id, transcript, metadata, dir);
+      if (this.config.maxClips > 0) {
+        clips = clips.slice(0, this.config.maxClips);
+        log.info(`Limiting to ${clips.length} clips (maxClips=${this.config.maxClips})`);
+      }
+      await this.processClips(run.id, clips, metadata, dir);
       this.checkpoint.markRunComplete(run.id);
       log.info(`Pipeline completed: ${run.id}`);
     } catch (err) {
@@ -105,7 +109,10 @@ export class PipelineOrchestrator {
       }
 
       let clips: ClipCandidate[];
-      const idResult = this.checkpoint.getStageResult<ClipCandidate[]>(runId, PipelineStage.IDENTIFY_CLIPS);
+      const idResult = this.checkpoint.getStageResult<ClipCandidate[]>(
+        runId,
+        PipelineStage.IDENTIFY_CLIPS,
+      );
       if (idResult?.status === StageStatus.COMPLETED) {
         clips = idResult.data;
         log.info("Skipping IDENTIFY_CLIPS (completed)");
@@ -120,7 +127,7 @@ export class PipelineOrchestrator {
         log.info("All clips already processed");
       } else {
         log.info(`Resuming ${remainingClips.length}/${clips.length} clips`);
-        await this.processClips(runId, remainingClips, metadata, transcript, dir);
+        await this.processClips(runId, remainingClips, metadata, dir);
       }
 
       this.checkpoint.markRunComplete(runId);
@@ -132,7 +139,11 @@ export class PipelineOrchestrator {
     }
   }
 
-  private async stageDownload(runId: string, videoUrl: string, dir: string): Promise<VideoMetadata> {
+  private async stageDownload(
+    runId: string,
+    videoUrl: string,
+    dir: string,
+  ): Promise<VideoMetadata> {
     this.checkpoint.startStage(runId, PipelineStage.DOWNLOAD);
     const downloadDir = join(dir, "downloads");
     const metadata = await this.downloader.download(videoUrl, downloadDir);
@@ -140,11 +151,20 @@ export class PipelineOrchestrator {
     return metadata;
   }
 
-  private async stageTranscribe(runId: string, metadata: VideoMetadata, dir: string): Promise<Transcript> {
+  private async stageTranscribe(
+    runId: string,
+    metadata: VideoMetadata,
+    dir: string,
+  ): Promise<Transcript> {
     this.checkpoint.startStage(runId, PipelineStage.TRANSCRIBE);
     const transcriptDir = join(dir, "transcripts");
     const transcript = await this.transcriber.transcribe(metadata, transcriptDir, this.config);
-    this.checkpoint.completeStage(runId, PipelineStage.TRANSCRIBE, [transcript.srtPath ?? ""], transcript);
+    this.checkpoint.completeStage(
+      runId,
+      PipelineStage.TRANSCRIBE,
+      [transcript.srtPath ?? ""],
+      transcript,
+    );
     return transcript;
   }
 
@@ -152,7 +172,7 @@ export class PipelineOrchestrator {
     runId: string,
     transcript: Transcript,
     metadata: VideoMetadata,
-    dir: string
+    dir: string,
   ): Promise<ClipCandidate[]> {
     this.checkpoint.startStage(runId, PipelineStage.IDENTIFY_CLIPS);
     const clips = await this.clipIdentifier.identify(transcript, metadata);
@@ -167,12 +187,13 @@ export class PipelineOrchestrator {
     runId: string,
     clips: ClipCandidate[],
     metadata: VideoMetadata,
-    transcript: Transcript,
-    dir: string
+    dir: string,
   ): Promise<void> {
     const semaphore = new Semaphore(this.config.maxParallelClips);
     const outputDir = join(this.config.paths.output, metadata.videoId);
     ensureDir(outputDir);
+
+    await this.captionGenerator.warmup();
 
     log.info(`Processing ${clips.length} clips (parallel: ${this.config.maxParallelClips})`);
 
@@ -181,12 +202,12 @@ export class PipelineOrchestrator {
         await semaphore.acquire();
         try {
           log.info(`[${index + 1}/${clips.length}] Processing: "${clip.title}"`);
-          await this.processOneClip(runId, clip, index, metadata, transcript, dir, outputDir);
+          await this.processOneClip(runId, clip, index, metadata, dir, outputDir);
           log.info(`[${index + 1}/${clips.length}] Completed: "${clip.title}"`);
         } finally {
           semaphore.release();
         }
-      })
+      }),
     );
 
     const failed = results.filter((r) => r.status === "rejected");
@@ -206,9 +227,8 @@ export class PipelineOrchestrator {
     clip: ClipCandidate,
     clipIndex: number,
     metadata: VideoMetadata,
-    transcript: Transcript,
     dir: string,
-    outputDir: string
+    outputDir: string,
   ): Promise<ClipArtifacts> {
     const artifacts: Partial<ClipArtifacts> = { clipId: clip.id };
     const progress = this.checkpoint.getClipProgress(runId, clip.id);
@@ -217,92 +237,138 @@ export class PipelineOrchestrator {
     if (progress?.artifactPaths?.extractedVideoPath) {
       artifacts.extractedVideoPath = progress.artifactPaths.extractedVideoPath;
     } else {
-      this.checkpoint.updateClipProgress(runId, clip.id, clipIndex, PipelineStage.EXTRACT_CLIPS, "in_progress", {});
+      this.checkpoint.updateClipProgress(
+        runId,
+        clip.id,
+        clipIndex,
+        PipelineStage.EXTRACT_CLIPS,
+        "in_progress",
+        {},
+      );
       artifacts.extractedVideoPath = await this.videoProcessor.extractClip(
         metadata.filePath,
         clip,
-        join(dir, "clips")
+        join(dir, "clips"),
       );
-      this.checkpoint.updateClipProgress(runId, clip.id, clipIndex, PipelineStage.EXTRACT_CLIPS, "completed", {
-        extractedVideoPath: artifacts.extractedVideoPath,
-      });
+      this.checkpoint.updateClipProgress(
+        runId,
+        clip.id,
+        clipIndex,
+        PipelineStage.EXTRACT_CLIPS,
+        "completed",
+        {
+          extractedVideoPath: artifacts.extractedVideoPath,
+        },
+      );
     }
 
     // Remove silence
     if (progress?.artifactPaths?.silenceRemovedPath) {
       artifacts.silenceRemovedPath = progress.artifactPaths.silenceRemovedPath;
     } else {
-      this.checkpoint.updateClipProgress(runId, clip.id, clipIndex, PipelineStage.REMOVE_SILENCE, "in_progress", {
-        extractedVideoPath: artifacts.extractedVideoPath,
-      });
+      this.checkpoint.updateClipProgress(
+        runId,
+        clip.id,
+        clipIndex,
+        PipelineStage.REMOVE_SILENCE,
+        "in_progress",
+        {
+          extractedVideoPath: artifacts.extractedVideoPath,
+        },
+      );
       const desilencedPath = join(dir, "desilenced", `${clip.id}_clean.mp4`);
-      artifacts.silenceRemovedPath = await this.videoProcessor.removeSilence(
+      const result = await this.videoProcessor.removeSilence(
         artifacts.extractedVideoPath,
         desilencedPath,
-        this.config
+        this.config,
       );
-      this.checkpoint.updateClipProgress(runId, clip.id, clipIndex, PipelineStage.REMOVE_SILENCE, "completed", {
-        extractedVideoPath: artifacts.extractedVideoPath,
-        silenceRemovedPath: artifacts.silenceRemovedPath,
-      });
+      artifacts.silenceRemovedPath = result.path;
+      this.checkpoint.updateClipProgress(
+        runId,
+        clip.id,
+        clipIndex,
+        PipelineStage.REMOVE_SILENCE,
+        "completed",
+        {
+          extractedVideoPath: artifacts.extractedVideoPath,
+          silenceRemovedPath: artifacts.silenceRemovedPath,
+        },
+      );
     }
 
     // Generate captions
     if (progress?.artifactPaths?.captionOverlayPath) {
-      artifacts.srtPath = progress.artifactPaths.srtPath;
       artifacts.captionOverlayPath = progress.artifactPaths.captionOverlayPath;
     } else {
-      this.checkpoint.updateClipProgress(runId, clip.id, clipIndex, PipelineStage.GENERATE_CAPTIONS, "in_progress", {
-        extractedVideoPath: artifacts.extractedVideoPath,
-        silenceRemovedPath: artifacts.silenceRemovedPath,
-      });
-      const srtPath = join(dir, "captions", `${clip.id}.srt`);
-      const movPath = join(dir, "captions", `${clip.id}.mov`);
-      const clipSegments = transcript.segments
-        .filter(s => s.start >= clip.startTime && s.end <= clip.endTime)
-        .map(s => ({ ...s, start: s.start - clip.startTime, end: s.end - clip.startTime }));
-      const captions = await this.captionGenerator.generate(
-        artifacts.silenceRemovedPath,
-        srtPath,
-        movPath,
-        this.config,
-        clipSegments
+      this.checkpoint.updateClipProgress(
+        runId,
+        clip.id,
+        clipIndex,
+        PipelineStage.GENERATE_CAPTIONS,
+        "in_progress",
+        {
+          extractedVideoPath: artifacts.extractedVideoPath,
+          silenceRemovedPath: artifacts.silenceRemovedPath,
+        },
       );
-      artifacts.srtPath = captions.srtPath;
-      artifacts.captionOverlayPath = captions.overlayPath;
-      this.checkpoint.updateClipProgress(runId, clip.id, clipIndex, PipelineStage.GENERATE_CAPTIONS, "completed", {
-        extractedVideoPath: artifacts.extractedVideoPath,
-        silenceRemovedPath: artifacts.silenceRemovedPath,
-        srtPath: artifacts.srtPath,
-        captionOverlayPath: artifacts.captionOverlayPath,
-      });
+
+      const overlayPath = join(dir, "captions", `${clip.id}_captions.webm`);
+      artifacts.captionOverlayPath = await this.captionGenerator.generate(
+        artifacts.silenceRemovedPath,
+        overlayPath,
+        this.config,
+      );
+
+      this.checkpoint.updateClipProgress(
+        runId,
+        clip.id,
+        clipIndex,
+        PipelineStage.GENERATE_CAPTIONS,
+        "completed",
+        {
+          extractedVideoPath: artifacts.extractedVideoPath,
+          silenceRemovedPath: artifacts.silenceRemovedPath,
+          captionOverlayPath: artifacts.captionOverlayPath,
+        },
+      );
     }
 
     // Compose reel
     if (progress?.artifactPaths?.finalReelPath) {
       artifacts.finalReelPath = progress.artifactPaths.finalReelPath;
     } else {
-      this.checkpoint.updateClipProgress(runId, clip.id, clipIndex, PipelineStage.COMPOSE_REEL, "in_progress", {
-        extractedVideoPath: artifacts.extractedVideoPath,
-        silenceRemovedPath: artifacts.silenceRemovedPath,
-        srtPath: artifacts.srtPath,
-        captionOverlayPath: artifacts.captionOverlayPath,
-      });
+      this.checkpoint.updateClipProgress(
+        runId,
+        clip.id,
+        clipIndex,
+        PipelineStage.COMPOSE_REEL,
+        "in_progress",
+        {
+          extractedVideoPath: artifacts.extractedVideoPath,
+          silenceRemovedPath: artifacts.silenceRemovedPath,
+          captionOverlayPath: artifacts.captionOverlayPath,
+        },
+      );
       const reelPath = join(outputDir, `${clip.id}_reel.mp4`);
       artifacts.finalReelPath = await this.videoProcessor.composeReel(
         artifacts.silenceRemovedPath,
-        artifacts.captionOverlayPath || null,
         this.config,
         reelPath,
-        artifacts.srtPath || null,
+        artifacts.captionOverlayPath,
       );
-      this.checkpoint.updateClipProgress(runId, clip.id, clipIndex, PipelineStage.COMPOSE_REEL, "completed", {
-        extractedVideoPath: artifacts.extractedVideoPath,
-        silenceRemovedPath: artifacts.silenceRemovedPath,
-        srtPath: artifacts.srtPath,
-        captionOverlayPath: artifacts.captionOverlayPath,
-        finalReelPath: artifacts.finalReelPath,
-      });
+      this.checkpoint.updateClipProgress(
+        runId,
+        clip.id,
+        clipIndex,
+        PipelineStage.COMPOSE_REEL,
+        "completed",
+        {
+          extractedVideoPath: artifacts.extractedVideoPath,
+          silenceRemovedPath: artifacts.silenceRemovedPath,
+          captionOverlayPath: artifacts.captionOverlayPath,
+          finalReelPath: artifacts.finalReelPath,
+        },
+      );
     }
 
     return artifacts as ClipArtifacts;
