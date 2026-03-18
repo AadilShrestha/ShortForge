@@ -37,11 +37,12 @@ export class CaptionGenerator {
 
     if (!srtGenerated && fallbackSegments?.length) {
       log.info("Using fallback SRT from transcript segments");
+      const cues = this.buildCleanSrt(fallbackSegments);
       const lines: string[] = [];
-      fallbackSegments.forEach((seg, i) => {
+      cues.forEach((cue, i) => {
         lines.push(String(i + 1));
-        lines.push(`${secondsToSrtTimestamp(seg.start)} --> ${secondsToSrtTimestamp(seg.end)}`);
-        lines.push(seg.text);
+        lines.push(`${secondsToSrtTimestamp(cue.start)} --> ${secondsToSrtTimestamp(cue.end)}`);
+        lines.push(cue.text);
         lines.push("");
       });
       await Bun.write(srtOutputPath, lines.join("\n"));
@@ -72,6 +73,54 @@ export class CaptionGenerator {
       log.warn(`PupCaps error: ${err}. Falling back to FFmpeg subtitle burn.`);
       return await this.ffmpegFallback(clipPath, srtOutputPath, movOutputPath);
     }
+  }
+
+  private buildCleanSrt(segments: TranscriptSegment[]): Array<{ start: number; end: number; text: string }> {
+    const sorted = [...segments].sort((a, b) => a.start - b.start);
+    const allText: Array<{ start: number; end: number; word: string }> = [];
+
+    for (const seg of sorted) {
+      const words = seg.text.trim().split(/\s+/).filter(w => w.length > 0);
+      if (words.length === 0) continue;
+      const duration = seg.end - seg.start;
+      const wordDuration = duration / words.length;
+      for (let i = 0; i < words.length; i++) {
+        allText.push({
+          start: seg.start + i * wordDuration,
+          end: seg.start + (i + 1) * wordDuration,
+          word: words[i],
+        });
+      }
+    }
+
+    // De-duplicate words at similar timestamps
+    const deduped: typeof allText = [];
+    for (const w of allText) {
+      const last = deduped[deduped.length - 1];
+      if (last && Math.abs(w.start - last.start) < 0.1 && w.word === last.word) continue;
+      deduped.push(w);
+    }
+
+    // Group into chunks of ~5 words
+    const maxWords = 5;
+    const cues: Array<{ start: number; end: number; text: string }> = [];
+    for (let i = 0; i < deduped.length; i += maxWords) {
+      const chunk = deduped.slice(i, i + maxWords);
+      cues.push({
+        start: chunk[0].start,
+        end: chunk[chunk.length - 1].end,
+        text: chunk.map(c => c.word).join(" "),
+      });
+    }
+
+    // Ensure no overlaps
+    for (let i = 0; i < cues.length - 1; i++) {
+      if (cues[i].end > cues[i + 1].start) {
+        cues[i].end = cues[i + 1].start;
+      }
+    }
+
+    return cues;
   }
 
   private async ffmpegFallback(

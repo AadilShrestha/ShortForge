@@ -10,6 +10,7 @@ const configSchema = z.object({
   silenceMinDuration: z.coerce.number().default(0.8),
   outputWidth: z.coerce.number().default(1080),
   outputHeight: z.coerce.number().default(1920),
+  clipSpeed: z.coerce.number().min(1).max(2).default(1.2),
   preferYouTubeTranscripts: z.coerce.boolean().default(true),
   captionAnimate: z.coerce.boolean().default(true),
   paths: z
@@ -34,6 +35,7 @@ export function loadConfig(): Config {
     silenceMinDuration: Bun.env.SILENCE_MIN_DURATION,
     outputWidth: Bun.env.OUTPUT_WIDTH,
     outputHeight: Bun.env.OUTPUT_HEIGHT,
+    clipSpeed: Bun.env.CLIP_SPEED,
     preferYouTubeTranscripts: Bun.env.PREFER_YOUTUBE_TRANSCRIPTS,
     captionAnimate: Bun.env.CAPTION_ANIMATE,
     paths: {},

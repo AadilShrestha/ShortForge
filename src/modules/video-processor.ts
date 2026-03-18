@@ -1,5 +1,5 @@
 import { createLogger } from "../utils/logger";
-import { runFfmpeg, runFfprobe, detectSilence, secondsToFfmpegTimestamp, getVideoDuration } from "../utils/ffmpeg";
+import { runFfmpeg, runFfprobe, detectSilence, secondsToFfmpegTimestamp, getVideoDuration, hasSubtitlesFilter } from "../utils/ffmpeg";
 import { listFiles, randomItem, fileExists } from "../utils/fs";
 import type { Config } from "../config";
 import type { ClipCandidate } from "../pipeline/types";
@@ -18,11 +18,11 @@ export class VideoProcessor {
 
     log.info(`Extracting clip: "${clip.title}" (${clip.startTime}s - ${clip.endTime}s)`);
     await runFfmpeg([
+      "-i", videoPath,
       "-ss", secondsToFfmpegTimestamp(clip.startTime),
       "-to", secondsToFfmpegTimestamp(clip.endTime),
-      "-i", videoPath,
-      "-c:v", "libx264", "-preset", "fast", "-crf", "23",
-      "-c:a", "aac", "-b:a", "128k",
+      "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+      "-c:a", "aac", "-b:a", "192k",
       "-y", outputPath,
     ]);
 
@@ -70,8 +70,8 @@ export class VideoProcessor {
       "-i", clipPath,
       "-vf", `select='${selectExpr}',setpts=N/FRAME_RATE/TB`,
       "-af", `aselect='${selectExpr}',asetpts=N/SR/TB`,
-      "-c:v", "libx264", "-preset", "fast", "-crf", "23",
-      "-c:a", "aac", "-b:a", "128k",
+      "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+      "-c:a", "aac", "-b:a", "192k",
       "-y", outputPath,
     ]);
 
@@ -100,16 +100,19 @@ export class VideoProcessor {
     const surferDuration = await getVideoDuration(surferPath);
     const clipDuration = await getVideoDuration(clipPath);
 
-    const maxOffset = Math.max(0, surferDuration - clipDuration);
+    const speed = config.clipSpeed;
+    const effectiveClipDuration = clipDuration / speed;
+    const maxOffset = Math.max(0, surferDuration - effectiveClipDuration);
     const surferOffset = Math.random() * maxOffset;
 
-    log.info("Composing split-screen reel...");
+    log.info(`Composing split-screen reel (${speed}x speed)...`);
 
     const halfHeight = Math.floor(config.outputHeight / 2);
     const w = config.outputWidth;
 
-    let filterComplex = `[0:v]scale=${w}:${halfHeight}:force_original_aspect_ratio=increase,crop=${w}:${halfHeight}[top];` +
-      `[1:v]scale=${w}:${halfHeight}:force_original_aspect_ratio=increase,crop=${w}:${halfHeight}[bottom];` +
+    let filterComplex = `[0:v]fps=30,scale=${w}:${halfHeight}:force_original_aspect_ratio=increase,crop=${w}:${halfHeight}[top];` +
+      `[1:v]fps=30,setpts=PTS/${speed},scale=${w}:${halfHeight}:force_original_aspect_ratio=increase,crop=${w}:${halfHeight}[bottom];` +
+      `[1:a]atempo=${speed}[afast];` +
       `[top][bottom]vstack=inputs=2[bg]`;
 
     const inputs = [
@@ -117,14 +120,14 @@ export class VideoProcessor {
       "-i", clipPath,
     ];
 
-    let extraMaps: string[] = [];
+    const canBurnSubs = await hasSubtitlesFilter();
+
     if (captionOverlayPath && await fileExists(captionOverlayPath)) {
       inputs.push("-i", captionOverlayPath);
       filterComplex += `;[2:v]scale=${w}:${config.outputHeight}[captions];[bg][captions]overlay=0:0:format=auto[out]`;
-    } else if (srtPath && await fileExists(srtPath)) {
-      inputs.push("-i", srtPath);
-      filterComplex += `;[bg]copy[out]`;
-      extraMaps = ["-map", "2:s"];
+    } else if (srtPath && await fileExists(srtPath) && canBurnSubs) {
+      const escaped = srtPath.replace(/\\/g, "\\\\\\\\").replace(/:/g, "\\\\:").replace(/'/g, "\\\\'");
+      filterComplex += `;[bg]subtitles=${escaped}:force_style='FontSize=18,PrimaryColour=&H00FFFFFF,BorderStyle=4,BackColour=&H80000000,Outline=0,Shadow=0,Alignment=5,MarginV=0'[out]`;
     } else {
       filterComplex += `;[bg]copy[out]`;
     }
@@ -132,11 +135,10 @@ export class VideoProcessor {
     await runFfmpeg([
       ...inputs,
       "-filter_complex", filterComplex,
-      "-map", "[out]", "-map", "1:a",
-      ...extraMaps,
-      "-c:v", "libx264", "-preset", "medium", "-crf", "23",
-      "-c:a", "aac", "-b:a", "128k",
-      ...(extraMaps.length > 0 ? ["-c:s", "mov_text"] : []),
+      "-map", "[out]", "-map", "[afast]",
+      "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+      "-c:a", "aac", "-b:a", "192k",
+      "-r", "30",
       "-shortest",
       "-y", outputPath,
     ]);
@@ -154,18 +156,20 @@ export class VideoProcessor {
   ): Promise<string> {
     const w = config.outputWidth;
     const h = config.outputHeight;
+    const speed = config.clipSpeed;
 
-    let filterComplex = `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}[base]`;
+    let filterComplex = `[0:v]fps=30,setpts=PTS/${speed},scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}[base];` +
+      `[0:a]atempo=${speed}[afast]`;
     const inputs = ["-i", clipPath];
-    let extraMaps: string[] = [];
+
+    const canBurnSubs = await hasSubtitlesFilter();
 
     if (captionOverlayPath && await fileExists(captionOverlayPath)) {
       inputs.push("-i", captionOverlayPath);
       filterComplex += `;[1:v]scale=${w}:${h}[captions];[base][captions]overlay=0:0:format=auto[out]`;
-    } else if (srtPath && await fileExists(srtPath)) {
-      inputs.push("-i", srtPath);
-      filterComplex += `;[base]copy[out]`;
-      extraMaps = ["-map", "1:s"];
+    } else if (srtPath && await fileExists(srtPath) && canBurnSubs) {
+      const escaped = srtPath.replace(/\\/g, "\\\\\\\\").replace(/:/g, "\\\\:").replace(/'/g, "\\\\'");
+      filterComplex += `;[base]subtitles=${escaped}:force_style='FontSize=18,PrimaryColour=&H00FFFFFF,BorderStyle=4,BackColour=&H80000000,Outline=0,Shadow=0,Alignment=5,MarginV=0'[out]`;
     } else {
       filterComplex += `;[base]copy[out]`;
     }
@@ -173,11 +177,10 @@ export class VideoProcessor {
     await runFfmpeg([
       ...inputs,
       "-filter_complex", filterComplex,
-      "-map", "[out]", "-map", "0:a",
-      ...extraMaps,
-      "-c:v", "libx264", "-preset", "medium", "-crf", "23",
-      "-c:a", "aac", "-b:a", "128k",
-      ...(extraMaps.length > 0 ? ["-c:s", "mov_text"] : []),
+      "-map", "[out]", "-map", "[afast]",
+      "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+      "-c:a", "aac", "-b:a", "192k",
+      "-r", "30",
       "-y", outputPath,
     ]);
 

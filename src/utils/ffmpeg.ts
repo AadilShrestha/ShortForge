@@ -1,4 +1,5 @@
 import { createLogger } from "./logger";
+import { existsSync } from "fs";
 
 const log = createLogger("ffmpeg");
 
@@ -16,11 +17,42 @@ export interface SilenceRange {
   end: number;
 }
 
+const FFMPEG_FULL_PATH = "/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg";
+const FFPROBE_FULL_PATH = "/opt/homebrew/opt/ffmpeg-full/bin/ffprobe";
+
+function getFfmpegBin(): string {
+  if (existsSync(FFMPEG_FULL_PATH)) return FFMPEG_FULL_PATH;
+  return "ffmpeg";
+}
+
+function getFfprobeBin(): string {
+  if (existsSync(FFPROBE_FULL_PATH)) return FFPROBE_FULL_PATH;
+  return "ffprobe";
+}
+
+let _hasSubtitlesFilter: boolean | null = null;
+
+export async function hasSubtitlesFilter(): Promise<boolean> {
+  if (_hasSubtitlesFilter !== null) return _hasSubtitlesFilter;
+  try {
+    const proc = Bun.spawn([getFfmpegBin(), "-filters"], { stdout: "pipe", stderr: "pipe" });
+    const stdout = await new Response(proc.stdout).text();
+    await proc.exited;
+    _hasSubtitlesFilter = stdout.includes("subtitles");
+    log.debug(`subtitles filter available: ${_hasSubtitlesFilter}`);
+    return _hasSubtitlesFilter;
+  } catch {
+    _hasSubtitlesFilter = false;
+    return false;
+  }
+}
+
 export async function runFfmpeg(
   args: string[],
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  log.debug(`ffmpeg ${args.join(" ")}`);
-  const proc = Bun.spawn(["ffmpeg", ...args], {
+  const bin = getFfmpegBin();
+  log.debug(`${bin} ${args.join(" ")}`);
+  const proc = Bun.spawn([bin, ...args], {
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -41,7 +73,7 @@ export async function runFfmpeg(
 export async function runFfprobe(filePath: string): Promise<FfprobeResult> {
   const proc = Bun.spawn(
     [
-      "ffprobe",
+      getFfprobeBin(),
       "-v",
       "quiet",
       "-print_format",
@@ -87,7 +119,7 @@ export async function detectSilence(
 ): Promise<SilenceRange[]> {
   const proc = Bun.spawn(
     [
-      "ffmpeg",
+      getFfmpegBin(),
       "-i",
       filePath,
       "-af",
