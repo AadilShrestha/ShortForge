@@ -82,7 +82,8 @@ export class VideoProcessor {
     clipPath: string,
     captionOverlayPath: string | null,
     config: Config,
-    outputPath: string
+    outputPath: string,
+    srtPath?: string | null,
   ): Promise<string> {
     if (await fileExists(outputPath)) {
       log.info("Reel already composed");
@@ -92,7 +93,7 @@ export class VideoProcessor {
     const surferFiles = listFiles(config.paths.subwaySurfers, ".mp4");
     if (surferFiles.length === 0) {
       log.warn("No subway surfers footage found, creating single-video reel");
-      return this.composeSingleReel(clipPath, captionOverlayPath, config, outputPath);
+      return this.composeSingleReel(clipPath, captionOverlayPath, config, outputPath, srtPath);
     }
 
     const surferPath = randomItem(surferFiles);
@@ -116,9 +117,14 @@ export class VideoProcessor {
       "-i", clipPath,
     ];
 
+    let extraMaps: string[] = [];
     if (captionOverlayPath && await fileExists(captionOverlayPath)) {
       inputs.push("-i", captionOverlayPath);
       filterComplex += `;[2:v]scale=${w}:${config.outputHeight}[captions];[bg][captions]overlay=0:0:format=auto[out]`;
+    } else if (srtPath && await fileExists(srtPath)) {
+      inputs.push("-i", srtPath);
+      filterComplex += `;[bg]copy[out]`;
+      extraMaps = ["-map", "2:s"];
     } else {
       filterComplex += `;[bg]copy[out]`;
     }
@@ -127,8 +133,10 @@ export class VideoProcessor {
       ...inputs,
       "-filter_complex", filterComplex,
       "-map", "[out]", "-map", "1:a",
+      ...extraMaps,
       "-c:v", "libx264", "-preset", "medium", "-crf", "23",
       "-c:a", "aac", "-b:a", "128k",
+      ...(extraMaps.length > 0 ? ["-c:s", "mov_text"] : []),
       "-shortest",
       "-y", outputPath,
     ]);
@@ -141,17 +149,23 @@ export class VideoProcessor {
     clipPath: string,
     captionOverlayPath: string | null,
     config: Config,
-    outputPath: string
+    outputPath: string,
+    srtPath?: string | null,
   ): Promise<string> {
     const w = config.outputWidth;
     const h = config.outputHeight;
 
     let filterComplex = `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}[base]`;
     const inputs = ["-i", clipPath];
+    let extraMaps: string[] = [];
 
     if (captionOverlayPath && await fileExists(captionOverlayPath)) {
       inputs.push("-i", captionOverlayPath);
       filterComplex += `;[1:v]scale=${w}:${h}[captions];[base][captions]overlay=0:0:format=auto[out]`;
+    } else if (srtPath && await fileExists(srtPath)) {
+      inputs.push("-i", srtPath);
+      filterComplex += `;[base]copy[out]`;
+      extraMaps = ["-map", "1:s"];
     } else {
       filterComplex += `;[base]copy[out]`;
     }
@@ -160,8 +174,10 @@ export class VideoProcessor {
       ...inputs,
       "-filter_complex", filterComplex,
       "-map", "[out]", "-map", "0:a",
+      ...extraMaps,
       "-c:v", "libx264", "-preset", "medium", "-crf", "23",
       "-c:a", "aac", "-b:a", "128k",
+      ...(extraMaps.length > 0 ? ["-c:s", "mov_text"] : []),
       "-y", outputPath,
     ]);
 

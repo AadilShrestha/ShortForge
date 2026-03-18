@@ -66,7 +66,7 @@ export class PipelineOrchestrator {
       const metadata = await this.stageDownload(run.id, videoUrl, dir);
       const transcript = await this.stageTranscribe(run.id, metadata, dir);
       const clips = await this.stageIdentifyClips(run.id, transcript, metadata, dir);
-      await this.processClips(run.id, clips, metadata, dir);
+      await this.processClips(run.id, clips, metadata, transcript, dir);
       this.checkpoint.markRunComplete(run.id);
       log.info(`Pipeline completed: ${run.id}`);
     } catch (err) {
@@ -120,7 +120,7 @@ export class PipelineOrchestrator {
         log.info("All clips already processed");
       } else {
         log.info(`Resuming ${remainingClips.length}/${clips.length} clips`);
-        await this.processClips(runId, remainingClips, metadata, dir);
+        await this.processClips(runId, remainingClips, metadata, transcript, dir);
       }
 
       this.checkpoint.markRunComplete(runId);
@@ -167,6 +167,7 @@ export class PipelineOrchestrator {
     runId: string,
     clips: ClipCandidate[],
     metadata: VideoMetadata,
+    transcript: Transcript,
     dir: string
   ): Promise<void> {
     const semaphore = new Semaphore(this.config.maxParallelClips);
@@ -180,7 +181,7 @@ export class PipelineOrchestrator {
         await semaphore.acquire();
         try {
           log.info(`[${index + 1}/${clips.length}] Processing: "${clip.title}"`);
-          await this.processOneClip(runId, clip, index, metadata, dir, outputDir);
+          await this.processOneClip(runId, clip, index, metadata, transcript, dir, outputDir);
           log.info(`[${index + 1}/${clips.length}] Completed: "${clip.title}"`);
         } finally {
           semaphore.release();
@@ -205,6 +206,7 @@ export class PipelineOrchestrator {
     clip: ClipCandidate,
     clipIndex: number,
     metadata: VideoMetadata,
+    transcript: Transcript,
     dir: string,
     outputDir: string
   ): Promise<ClipArtifacts> {
@@ -256,11 +258,15 @@ export class PipelineOrchestrator {
       });
       const srtPath = join(dir, "captions", `${clip.id}.srt`);
       const movPath = join(dir, "captions", `${clip.id}.mov`);
+      const clipSegments = transcript.segments
+        .filter(s => s.start >= clip.startTime && s.end <= clip.endTime)
+        .map(s => ({ ...s, start: s.start - clip.startTime, end: s.end - clip.startTime }));
       const captions = await this.captionGenerator.generate(
         artifacts.silenceRemovedPath,
         srtPath,
         movPath,
-        this.config
+        this.config,
+        clipSegments
       );
       artifacts.srtPath = captions.srtPath;
       artifacts.captionOverlayPath = captions.overlayPath;
@@ -285,9 +291,10 @@ export class PipelineOrchestrator {
       const reelPath = join(outputDir, `${clip.id}_reel.mp4`);
       artifacts.finalReelPath = await this.videoProcessor.composeReel(
         artifacts.silenceRemovedPath,
-        artifacts.captionOverlayPath ?? null,
+        artifacts.captionOverlayPath || null,
         this.config,
-        reelPath
+        reelPath,
+        artifacts.srtPath || null,
       );
       this.checkpoint.updateClipProgress(runId, clip.id, clipIndex, PipelineStage.COMPOSE_REEL, "completed", {
         extractedVideoPath: artifacts.extractedVideoPath,

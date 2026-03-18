@@ -39,12 +39,12 @@ export class ClipIdentifier {
     log.info(`Analyzing transcript for clip-worthy segments...`);
 
     const formattedTranscript = transcript.segments
-      .map(s => `[${this.formatTime(s.start)} - ${this.formatTime(s.end)}] ${s.text}`)
+      .map(s => `[${s.start.toFixed(1)}s - ${s.end.toFixed(1)}s] ${s.text}`)
       .join("\n");
 
     const prompt = `You are a viral content strategist specializing in history/education TikTok and YouTube Shorts.
 
-Analyze this lecture transcript from "${metadata.title}" and identify segments that would make compelling short-form clips (30-90 seconds each).
+Analyze this lecture transcript from "${metadata.title}" (total duration: ${metadata.duration} seconds) and identify segments that would make compelling short-form clips (30-90 seconds each).
 
 Look for:
 - Surprising or counterintuitive historical facts
@@ -59,6 +59,9 @@ Each clip MUST:
 - Be self-contained (makes sense without surrounding context)
 - Start with a hook that grabs attention in the first 3 seconds
 - Have a clear payoff or revelation
+
+IMPORTANT: The timestamps in the transcript are in SECONDS (e.g., 533.0s means 533 seconds into the video).
+Return startTime and endTime as numbers in SECONDS (not minutes:seconds). For example, if a clip starts at 8 minutes 53 seconds, return startTime: 533.
 
 TRANSCRIPT:
 ${formattedTranscript}
@@ -85,10 +88,20 @@ Return clips sorted by viralScore (highest first). Aim for 5-15 clips depending 
       tags: string[];
     }> };
 
+    log.info(`Gemini returned ${parsed.clips.length} raw clips (video duration: ${metadata.duration}s)`);
+    for (const c of parsed.clips) {
+      const dur = c.endTime - c.startTime;
+      log.debug(`  "${c.title}" ${c.startTime}s-${c.endTime}s (${dur.toFixed(0)}s) score=${c.viralScore}`);
+    }
+
     const candidates: ClipCandidate[] = parsed.clips
       .filter(c => {
         const duration = c.endTime - c.startTime;
-        return duration >= 15 && duration <= 120 && c.startTime >= 0 && c.endTime <= metadata.duration;
+        if (duration < 15 || duration > 120 || c.startTime < 0 || c.endTime > metadata.duration) {
+          log.debug(`  Filtered out: "${c.title}" (dur=${duration.toFixed(0)}s, end=${c.endTime}, max=${metadata.duration})`);
+          return false;
+        }
+        return true;
       })
       .map(c => ({
         id: crypto.randomUUID(),
@@ -107,9 +120,4 @@ Return clips sorted by viralScore (highest first). Aim for 5-15 clips depending 
     return candidates;
   }
 
-  private formatTime(seconds: number): string {
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    return `${m}:${String(s).padStart(2, "0")}`;
-  }
 }

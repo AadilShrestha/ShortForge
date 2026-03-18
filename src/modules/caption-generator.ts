@@ -53,42 +53,33 @@ export class CaptionGenerator {
     }
 
     log.info("Generating caption overlay with PupCaps...");
-    const pupcapsArgs = ["pupcaps", srtOutputPath, "--output", movOutputPath, "--width", "1080", "--height", "1920"];
-    if (config.captionAnimate) pupcapsArgs.push("--animate");
+    try {
+      const pupcapsArgs = ["pupcaps", srtOutputPath, "--output", movOutputPath, "--width", "1080", "--height", "1920"];
+      if (config.captionAnimate) pupcapsArgs.push("--animate");
 
-    const pupcapsProc = Bun.spawn(pupcapsArgs, { stdout: "pipe", stderr: "pipe" });
-    const pcStderr = await new Response(pupcapsProc.stderr).text();
-    const pcExit = await pupcapsProc.exited;
+      const pupcapsProc = Bun.spawn(pupcapsArgs, { stdout: "pipe", stderr: "pipe" });
+      const pcStderr = await new Response(pupcapsProc.stderr).text();
+      const pcExit = await pupcapsProc.exited;
 
-    if (pcExit !== 0) {
-      log.warn(`PupCaps failed: ${pcStderr}. Falling back to FFmpeg subtitle burn.`);
+      if (pcExit !== 0) {
+        log.warn(`PupCaps failed: ${pcStderr}. Falling back to FFmpeg subtitle burn.`);
+        return await this.ffmpegFallback(clipPath, srtOutputPath, movOutputPath);
+      }
+
+      log.info("Caption overlay generated");
+      return { srtPath: srtOutputPath, overlayPath: movOutputPath };
+    } catch (err) {
+      log.warn(`PupCaps error: ${err}. Falling back to FFmpeg subtitle burn.`);
       return await this.ffmpegFallback(clipPath, srtOutputPath, movOutputPath);
     }
-
-    log.info("Caption overlay generated");
-    return { srtPath: srtOutputPath, overlayPath: movOutputPath };
   }
 
   private async ffmpegFallback(
-    clipPath: string,
+    _clipPath: string,
     srtPath: string,
-    outputPath: string
+    _outputPath: string
   ): Promise<{ srtPath: string; overlayPath: string }> {
-    log.info("Using FFmpeg subtitle burn as fallback");
-    const proc = Bun.spawn([
-      "ffmpeg", "-y",
-      "-f", "lavfi", "-i", `color=c=black@0.0:s=1080x1920,format=rgba`,
-      "-i", clipPath,
-      "-filter_complex",
-      `[0:v]subtitles='${srtPath.replace(/'/g, "\\'")}':force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Alignment=2,MarginV=100'[out]`,
-      "-map", "[out]",
-      "-t", "999",
-      "-shortest",
-      "-c:v", "png",
-      outputPath,
-    ], { stdout: "pipe", stderr: "pipe" });
-    await proc.exited;
-
-    return { srtPath, overlayPath: outputPath };
+    log.info("No overlay available, SRT will be burned during reel composition");
+    return { srtPath, overlayPath: "" };
   }
 }

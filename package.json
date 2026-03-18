@@ -8,7 +8,10 @@
     "batch": "bun run src/index.ts batch",
     "resume": "bun run src/index.ts resume",
     "status": "bun run src/index.ts status",
-    "clean": "bun run src/index.ts clean"
+    "clean": "bun run src/index.ts clean",
+    "test": "bun test",
+    "test:unit": "bun test tests/utils tests/pipeline",
+    "test:e2e": "bun test tests/modules"
   },
   "dependencies": {
     "@google/genai": "^1.0.0",
