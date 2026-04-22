@@ -6,14 +6,10 @@ Built with Bun + TypeScript, with AI-based clip identification and upload workfl
 
 ---
 
-## Fork Attribution
+## Credits
 
-This repository is a **fork** of the original project:
-
-- Original (upstream): `https://github.com/ayush-that/jiang-clips`
-- Fork (this repo): `https://github.com/AadilShrestha/ShortForge`
-
-GitHub should also show native fork linkage (`forked from ayush-that/jiang-clips`) once repository metadata syncs.
+Core concept and initial implementation credit to the original project by **@ayush-that**:
+`https://github.com/ayush-that/jiang-clips`
 
 ---
 
@@ -39,6 +35,30 @@ GitHub should also show native fork linkage (`forked from ayush-that/jiang-clips
   - GitHub Copilot access/subscription when `CLIP_IDENTIFIER_PROVIDER=copilot`
   - OR `GEMINI_API_KEY` when `CLIP_IDENTIFIER_PROVIDER=gemini`
 - Upload platform credentials if using YouTube/TikTok/Instagram publishing flows
+
+### FFmpeg Installation (Required)
+
+`bun install` installs JavaScript dependencies only. It does **not** install system tools like FFmpeg.
+
+Install FFmpeg separately based on your OS:
+
+```bash
+# Windows (winget)
+winget install Gyan.FFmpeg
+
+# macOS (Homebrew)
+brew install ffmpeg
+
+# Ubuntu/Debian
+sudo apt update && sudo apt install -y ffmpeg
+```
+
+After install, verify:
+
+```bash
+ffmpeg -version
+ffprobe -version
+```
 
 ---
 
