@@ -4,7 +4,7 @@ import { CheckpointManager } from "./checkpoint";
 import { PipelineStage, StageStatus } from "./types";
 import type { Config } from "../config";
 import type { VideoMetadata, Transcript, ClipCandidate, ClipArtifacts } from "./types";
-import { Downloader } from "../modules/downloader";
+import { Downloader, type DownloadSourceMode } from "../modules/downloader";
 import { Transcriber } from "../modules/transcriber";
 import { ClipIdentifier } from "../modules/clip-identifier";
 import { VideoProcessor } from "../modules/video-processor";
@@ -39,6 +39,13 @@ class Semaphore {
   }
 }
 
+type RunCreatedHandler = (runId: string) => void | Promise<void>;
+
+interface PipelineRunOptions {
+  sourceMode?: DownloadSourceMode;
+  onRunCreated?: RunCreatedHandler;
+}
+
 export class PipelineOrchestrator {
   private checkpoint: CheckpointManager;
   private config: Config;
@@ -54,16 +61,21 @@ export class PipelineOrchestrator {
     this.clipIdentifier = new ClipIdentifier(config);
   }
 
-  async run(videoUrl: string, _fromStage?: PipelineStage): Promise<string> {
-    const videoId = this.extractVideoId(videoUrl);
-    const run = this.checkpoint.createRun(videoUrl, videoId, "");
+  async run(sourceInput: string, options?: PipelineRunOptions, _fromStage?: PipelineStage): Promise<string> {
+    const sourceMode = options?.sourceMode ?? this.inferSourceMode(sourceInput);
+    const videoId = this.extractVideoId(sourceInput);
+    const run = this.checkpoint.createRun(sourceInput, videoId, "");
     const dir = runDir(this.config.paths.data, run.id);
 
     log.info(`Pipeline started: ${run.id}`);
-    log.info(`Video: ${videoUrl}`);
+    log.info(`Source (${sourceMode}): ${sourceInput}`);
 
     try {
-      const metadata = await this.stageDownload(run.id, videoUrl, dir);
+      if (options?.onRunCreated) {
+        await options.onRunCreated(run.id);
+      }
+
+      const metadata = await this.stageDownload(run.id, sourceInput, sourceMode, dir);
       const transcript = await this.stageTranscribe(run.id, metadata, dir);
       let clips = await this.stageIdentifyClips(run.id, transcript, metadata, dir);
       if (this.config.maxClips > 0) {
@@ -88,6 +100,7 @@ export class PipelineOrchestrator {
 
     log.info(`Resuming pipeline: ${runId}`);
     const dir = runDir(this.config.paths.data, runId);
+    const sourceMode = this.inferSourceMode(run.videoUrl);
 
     try {
       let metadata: VideoMetadata;
@@ -96,7 +109,7 @@ export class PipelineOrchestrator {
         metadata = dlResult.data;
         log.info("Skipping DOWNLOAD (completed)");
       } else {
-        metadata = await this.stageDownload(runId, run.videoUrl, dir);
+        metadata = await this.stageDownload(runId, run.videoUrl, sourceMode, dir);
       }
 
       let transcript: Transcript;
@@ -120,6 +133,9 @@ export class PipelineOrchestrator {
         clips = await this.stageIdentifyClips(runId, transcript, metadata, dir);
       }
 
+      const clipIndexById = new Map<string, number>(
+        clips.map((clip, index) => [clip.id, index]),
+      );
       const completedIds = new Set(this.checkpoint.getCompletedClipIds(runId));
       const remainingClips = clips.filter((c) => !completedIds.has(c.id));
 
@@ -127,7 +143,7 @@ export class PipelineOrchestrator {
         log.info("All clips already processed");
       } else {
         log.info(`Resuming ${remainingClips.length}/${clips.length} clips`);
-        await this.processClips(runId, remainingClips, metadata, dir);
+        await this.processClips(runId, remainingClips, metadata, dir, clipIndexById);
       }
 
       this.checkpoint.markRunComplete(runId);
@@ -141,12 +157,13 @@ export class PipelineOrchestrator {
 
   private async stageDownload(
     runId: string,
-    videoUrl: string,
+    sourceInput: string,
+    sourceMode: DownloadSourceMode,
     dir: string,
   ): Promise<VideoMetadata> {
     this.checkpoint.startStage(runId, PipelineStage.DOWNLOAD);
     const downloadDir = join(dir, "downloads");
-    const metadata = await this.downloader.download(videoUrl, downloadDir);
+    const metadata = await this.downloader.downloadFromSource(sourceInput, downloadDir, sourceMode);
     this.checkpoint.completeStage(runId, PipelineStage.DOWNLOAD, [metadata.filePath], metadata);
     return metadata;
   }
@@ -188,6 +205,7 @@ export class PipelineOrchestrator {
     clips: ClipCandidate[],
     metadata: VideoMetadata,
     dir: string,
+    clipIndexById?: ReadonlyMap<string, number>,
   ): Promise<void> {
     const semaphore = new Semaphore(this.config.maxParallelClips);
     const outputDir = join(this.config.paths.output, metadata.videoId);
@@ -199,10 +217,12 @@ export class PipelineOrchestrator {
 
     const results = await Promise.allSettled(
       clips.map(async (clip, index) => {
+        const canonicalClipIndex = clipIndexById?.get(clip.id) ?? index;
+
         await semaphore.acquire();
         try {
           log.info(`[${index + 1}/${clips.length}] Processing: "${clip.title}"`);
-          await this.processOneClip(runId, clip, index, metadata, dir, outputDir);
+          await this.processOneClip(runId, clip, canonicalClipIndex, metadata, dir, outputDir);
           log.info(`[${index + 1}/${clips.length}] Completed: "${clip.title}"`);
         } finally {
           semaphore.release();
@@ -349,7 +369,8 @@ export class PipelineOrchestrator {
           captionOverlayPath: artifacts.captionOverlayPath,
         },
       );
-      const reelPath = join(outputDir, `${clip.id}_reel.mp4`);
+      const reelFilename = this.buildReadableReelFilename(clip, clipIndex);
+      const reelPath = join(outputDir, reelFilename);
       artifacts.finalReelPath = await this.videoProcessor.composeReel(
         artifacts.silenceRemovedPath,
         this.config,
@@ -373,6 +394,28 @@ export class PipelineOrchestrator {
 
     return artifacts as ClipArtifacts;
   }
+
+  private buildReadableReelFilename(clip: ClipCandidate, clipIndex: number): string {
+    const prefix = String(clipIndex + 1).padStart(2, "0");
+    const slug = clip.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 70);
+
+    const safeSlug = slug.length > 0 ? slug : "clip";
+    return `${prefix}-${safeSlug}.mp4`;
+  }
+
+  private inferSourceMode(sourceInput: string): DownloadSourceMode {
+    const normalizedSource = sourceInput.trim().toLowerCase();
+    if (normalizedSource.startsWith("http://") || normalizedSource.startsWith("https://")) {
+      return "youtube_url";
+    }
+
+    return "local_video";
+  }
+
 
   private extractVideoId(url: string): string {
     const match = url.match(/(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);

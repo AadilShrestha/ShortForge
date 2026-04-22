@@ -2,29 +2,27 @@ import React from "react";
 import { useCurrentFrame } from "remotion";
 import type { CaptionGroup, CaptionOverlayProps } from "./types";
 
-const FONT_SIZE = 52;
-const ACTIVE_COLOR = "#FFD700";
+const FONT_SIZE = 36;
+const ACTIVE_COLOR = "#FFD44F";
 const INACTIVE_COLOR = "#FFFFFF";
-
+const BOX_BACKGROUND = "rgba(0, 0, 0, 0.72)";
 const TEXT_STROKE =
-  "-3px -3px 0 #000, 3px -3px 0 #000, -3px 3px 0 #000, 3px 3px 0 #000, " +
-  "0 -3px 0 #000, 0 3px 0 #000, -3px 0 0 #000, 3px 0 0 #000";
+  "0 3px 12px rgba(0, 0, 0, 0.85), 0 1px 0 rgba(0, 0, 0, 0.92), 0 -1px 0 rgba(0, 0, 0, 0.92)";
 
-const CaptionBox: React.FC<{ group: CaptionGroup; frame: number }> = ({ group, frame }) => {
-  const words = group.words;
-  const midpoint = Math.ceil(words.length / 2);
-  const line1 = words.slice(0, midpoint);
-  const line2 = words.slice(midpoint);
-
-  const renderWord = (word: (typeof words)[0], idx: number) => {
+const CaptionBox: React.FC<{ group: CaptionGroup; frame: number; width: number }> = ({
+  group,
+  frame,
+  width,
+}) => {
+  const renderWord = (word: (typeof group.words)[0], idx: number) => {
     const isActive = frame >= word.startFrame && frame < word.endFrame;
     return (
       <span
-        key={idx}
+        key={`${word.text}-${idx}`}
         style={{
           color: isActive ? ACTIVE_COLOR : INACTIVE_COLOR,
-          marginRight: 12,
           textShadow: TEXT_STROKE,
+          whiteSpace: "pre",
         }}
       >
         {word.text.toUpperCase()}
@@ -35,26 +33,26 @@ const CaptionBox: React.FC<{ group: CaptionGroup; frame: number }> = ({ group, f
   return (
     <div
       style={{
-        background: "#000000",
-        padding: "12px 20px",
-        borderRadius: 8,
-        display: "inline-flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 8,
+        maxWidth: Math.round(width * 0.74),
+        background: BOX_BACKGROUND,
+        padding: "10px 16px",
+        borderRadius: 14,
+        border: "1px solid rgba(255, 255, 255, 0.14)",
+        display: "flex",
+        flexWrap: "wrap",
+        justifyContent: "center",
+        columnGap: 10,
+        rowGap: 8,
+        lineHeight: 1.08,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "center" }}>{line1.map(renderWord)}</div>
-      {line2.length > 0 && (
-        <div style={{ display: "flex", justifyContent: "center" }}>{line2.map(renderWord)}</div>
-      )}
+      {group.words.map(renderWord)}
     </div>
   );
 };
 
 export const CaptionOverlay: React.FC<CaptionOverlayProps> = ({ groups, width, height }) => {
   const frame = useCurrentFrame();
-
   const activeGroup = groups.find((g) => frame >= g.startFrame && frame < g.endFrame);
 
   return (
@@ -63,18 +61,20 @@ export const CaptionOverlay: React.FC<CaptionOverlayProps> = ({ groups, width, h
         width,
         height,
         display: "flex",
-        alignItems: "center",
+        alignItems: "flex-end",
         justifyContent: "center",
+        paddingBottom: Math.round(height * 0.16),
         fontFamily: "Arial, Helvetica, sans-serif",
         fontWeight: 800,
         fontSize: FONT_SIZE,
         position: "absolute",
         top: 0,
         left: 0,
+        pointerEvents: "none",
         backgroundColor: "#00FF00",
       }}
     >
-      {activeGroup && <CaptionBox group={activeGroup} frame={frame} />}
+      {activeGroup && <CaptionBox group={activeGroup} frame={frame} width={width} />}
     </div>
   );
 };

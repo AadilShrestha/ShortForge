@@ -83,6 +83,8 @@ describe("VideoProcessor", () => {
       silenceMinDuration: 0.5,
       outputWidth: 1080,
       outputHeight: 1920,
+      clipMinDurationSec: 20,
+      clipMaxDurationSec: 30,
       preferYouTubeTranscripts: true,
       captionAnimate: true,
       paths: {
@@ -115,6 +117,8 @@ describe("VideoProcessor", () => {
       silenceMinDuration: 0.8,
       outputWidth: 1080,
       outputHeight: 1920,
+      clipMinDurationSec: 20,
+      clipMaxDurationSec: 30,
       preferYouTubeTranscripts: true,
       captionAnimate: true,
       paths: {

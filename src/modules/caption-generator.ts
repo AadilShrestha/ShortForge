@@ -9,8 +9,9 @@ import type { CaptionWord, CaptionGroup, CaptionOverlayProps } from "../remotion
 
 const log = createLogger("captions");
 const FPS = 30;
-const WORDS_PER_GROUP = 6;
+const WORDS_PER_GROUP = 4;
 const WHISPER_CLI = "whisper-cli";
+const LOCAL_WHISPER_CLI_CMD = resolve(__dirname, "../../whisper-cli.cmd");
 const MODELS_DIR = resolve(__dirname, "../../models");
 
 let bundlePromise: Promise<string> | null = null;
@@ -112,15 +113,22 @@ export class CaptionGenerator {
     workDir: string,
   ): Promise<WhisperWord[]> {
     const modelPath = join(MODELS_DIR, `ggml-${config.whisperModel}.bin`);
-    log.info(`Running whisper-cli word-level transcription (model: ${config.whisperModel})...`);
+    const tempId = crypto.randomUUID();
+    const wavPath = join(workDir, `caption_audio_${tempId}.wav`);
+    const jsonBase = join(workDir, `caption_words_${tempId}`);
+    const whisperCommand =
+      process.platform === "win32" && (await Bun.file(LOCAL_WHISPER_CLI_CMD).exists())
+        ? LOCAL_WHISPER_CLI_CMD
+        : WHISPER_CLI;
 
-    const wavPath = join(workDir, "caption_audio.wav");
+    log.info(`Running whisper-cli word-level transcription (model: ${config.whisperModel})...`);
+    log.debug(`Whisper command: ${whisperCommand}`);
+
     await runFfmpeg(["-i", videoPath, "-ar", "16000", "-ac", "1", "-f", "wav", "-y", wavPath]);
 
-    const jsonBase = join(workDir, "caption_words");
     const proc = Bun.spawn(
       [
-        WHISPER_CLI,
+        whisperCommand,
         "-m",
         modelPath,
         "-f",

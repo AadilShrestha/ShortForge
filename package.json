@@ -1,22 +1,29 @@
 {
-  "name": "jiang-clips",
+  "name": "clipper",
   "version": "1.0.0",
   "type": "module",
+  "bin": {
+    "clips": "src/index.ts"
+  },
   "scripts": {
     "start": "bun run src/index.ts",
+    "interactive": "bun run src/index.ts interactive",
     "pipeline": "bun run src/index.ts pipeline",
+    "pipeline:profile": "bun run src/index.ts pipeline-profile",
     "batch": "bun run src/index.ts batch",
     "resume": "bun run src/index.ts resume",
     "status": "bun run src/index.ts status",
     "clean": "bun run src/index.ts clean",
+    "profiles": "bun run src/index.ts profiles",
     "test": "bun test",
-    "test:unit": "bun test tests/utils tests/pipeline",
+    "test:unit": "bun test tests/utils tests/pipeline tests/cli",
     "test:e2e": "bun test tests/modules",
     "lint": "oxlint",
     "format": "oxfmt --write src tests",
     "format:check": "oxfmt --check src tests"
   },
   "dependencies": {
+    "@github/copilot-sdk": "^0.2.1",
     "@google/genai": "^1.0.0",
     "@remotion/bundler": "^4.0.436",
     "@remotion/cli": "^4.0.436",

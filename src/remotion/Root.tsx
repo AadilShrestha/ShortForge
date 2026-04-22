@@ -1,11 +1,10 @@
 import React from "react";
 import { Composition } from "remotion";
 import { CaptionOverlay } from "./CaptionOverlay";
-import type { CaptionOverlayProps } from "./types";
 
 export const RemotionRoot: React.FC = () => {
   return (
-    <Composition<CaptionOverlayProps>
+    <Composition
       id="CaptionOverlay"
       component={CaptionOverlay}
       width={1080}

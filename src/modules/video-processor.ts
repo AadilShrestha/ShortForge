@@ -172,15 +172,21 @@ export class VideoProcessor {
     const h = config.outputHeight;
     const hasCaptions = captionOverlayPath && (await fileExists(captionOverlayPath));
 
+    // Keep full content visible: use a light blur-fill backdrop and overlay uncropped foreground.
     let filterComplex =
-      `[0:v]fps=30,scale=${w}:${halfHeight}:force_original_aspect_ratio=increase,crop=${w}:${halfHeight}[top];` +
-      `[1:v]fps=30,setpts=PTS/${speed},scale=${w}:${halfHeight}:force_original_aspect_ratio=increase,crop=${w}:${halfHeight}[bottom];` +
+      `[0:v]fps=30,scale=${w}:${halfHeight}:force_original_aspect_ratio=increase,crop=${w}:${halfHeight},boxblur=10:4[topbg];` +
+      `[0:v]fps=30,scale=${w}:${halfHeight}:force_original_aspect_ratio=decrease[topfg];` +
+      `[topbg][topfg]overlay=(W-w)/2:(H-h)/2[top];` +
+      `[1:v]fps=30,setpts=PTS/${speed},scale=${w}:${halfHeight}:force_original_aspect_ratio=increase,crop=${w}:${halfHeight},boxblur=10:4[bottombg];` +
+      `[1:v]fps=30,setpts=PTS/${speed},scale=${w}:${halfHeight}:force_original_aspect_ratio=decrease[bottomfg];` +
+      `[bottombg][bottomfg]overlay=(W-w)/2:(H-h)/2[bottom];` +
       `[1:a]atempo=${speed}[afast];` +
       `[top][bottom]vstack=inputs=2[bg]`;
 
     if (hasCaptions) {
       filterComplex +=
-        `;[2:v]fps=30,scale=${w}:${h},colorkey=0x00FF00:0.3:0.1[captions];` + `[bg][captions]overlay=0:0:format=auto[out]`;
+        `;[2:v]fps=30,scale=${w}:${h},colorkey=0x00FF00:0.3:0.1[captions];` +
+        `[bg][captions]overlay=0:0:format=auto[out]`;
     } else {
       filterComplex += `;[bg]copy[out]`;
     }
@@ -212,6 +218,12 @@ export class VideoProcessor {
       "medium",
       "-crf",
       "18",
+      "-pix_fmt",
+      "yuv420p",
+      "-profile:v",
+      "high",
+      "-movflags",
+      "+faststart",
       "-c:a",
       "aac",
       "-b:a",
@@ -238,13 +250,17 @@ export class VideoProcessor {
     const speed = config.clipSpeed;
     const hasCaptions = captionOverlayPath && (await fileExists(captionOverlayPath));
 
+    // Short-form style: avoid black bars with a light blur backdrop behind the full frame.
     let filterComplex =
-      `[0:v]fps=30,setpts=PTS/${speed},scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}[base];` +
+      `[0:v]fps=30,setpts=PTS/${speed},scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},boxblur=10:4[bg];` +
+      `[0:v]fps=30,setpts=PTS/${speed},scale=${w}:${h}:force_original_aspect_ratio=decrease[fg];` +
+      `[bg][fg]overlay=(W-w)/2:(H-h)/2[base];` +
       `[0:a]atempo=${speed}[afast]`;
 
     if (hasCaptions) {
       filterComplex +=
-        `;[1:v]fps=30,scale=${w}:${h},colorkey=0x00FF00:0.3:0.1[captions];` + `[base][captions]overlay=0:0:format=auto[out]`;
+        `;[1:v]fps=30,scale=${w}:${h},colorkey=0x00FF00:0.3:0.1[captions];` +
+        `[base][captions]overlay=0:0:format=auto[out]`;
     } else {
       filterComplex += `;[base]copy[out]`;
     }
@@ -268,6 +284,12 @@ export class VideoProcessor {
       "medium",
       "-crf",
       "18",
+      "-pix_fmt",
+      "yuv420p",
+      "-profile:v",
+      "high",
+      "-movflags",
+      "+faststart",
       "-c:a",
       "aac",
       "-b:a",

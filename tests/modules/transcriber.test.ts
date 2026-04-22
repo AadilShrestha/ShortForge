@@ -42,6 +42,8 @@ describe("Transcriber", () => {
       silenceMinDuration: 0.8,
       outputWidth: 1080,
       outputHeight: 1920,
+      clipMinDurationSec: 20,
+      clipMaxDurationSec: 30,
       preferYouTubeTranscripts: true,
       captionAnimate: true,
       paths: {
@@ -75,4 +77,70 @@ describe("Transcriber", () => {
       if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true });
     }
   }, 30_000);
+
+  test("falls back to yt-dlp captions when YouTube API fails", async () => {
+    const transcriber = new Transcriber() as any;
+    const calls: string[] = [];
+
+    transcriber.fromYouTube = async () => {
+      calls.push("youtube");
+      throw new Error("blocked");
+    };
+    transcriber.fromYtDlpCaptions = async () => {
+      calls.push("ytdlp");
+      return {
+        source: "youtube",
+        language: "en",
+        segments: [{ text: "hello", start: 0, duration: 1, end: 1 }],
+        fullText: "hello",
+        srtPath: null,
+      };
+    };
+    transcriber.fromWhisper = async () => {
+      calls.push("whisper");
+      throw new Error("should not run");
+    };
+
+    const transcript = await transcriber.transcribe(
+      { videoId: "v", title: "t", duration: 1, uploadDate: "", filePath: "f.mp4" },
+      TMP,
+      { preferYouTubeTranscripts: true, whisperModel: "base" },
+    );
+
+    expect(transcript.source).toBe("youtube");
+    expect(calls).toEqual(["youtube", "ytdlp"]);
+  });
+
+  test("falls back to Whisper when caption fallback fails", async () => {
+    const transcriber = new Transcriber() as any;
+    const calls: string[] = [];
+
+    transcriber.fromYouTube = async () => {
+      calls.push("youtube");
+      throw new Error("blocked");
+    };
+    transcriber.fromYtDlpCaptions = async () => {
+      calls.push("ytdlp");
+      throw new Error("caption track missing");
+    };
+    transcriber.fromWhisper = async () => {
+      calls.push("whisper");
+      return {
+        source: "whisper",
+        language: "en",
+        segments: [{ text: "fallback", start: 0, duration: 1, end: 1 }],
+        fullText: "fallback",
+        srtPath: null,
+      };
+    };
+
+    const transcript = await transcriber.transcribe(
+      { videoId: "v", title: "t", duration: 1, uploadDate: "", filePath: "f.mp4" },
+      TMP,
+      { preferYouTubeTranscripts: true, whisperModel: "base" },
+    );
+
+    expect(transcript.source).toBe("whisper");
+    expect(calls).toEqual(["youtube", "ytdlp", "whisper"]);
+  });
 });
