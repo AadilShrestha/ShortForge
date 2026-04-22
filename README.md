@@ -1,8 +1,8 @@
-# jiang-clips
+# ShortForge
 
 Automated short-form clip extraction, editing, and publishing pipeline for YouTube content.
 
-Built with Bun + TypeScript, with AI-based clip identification and optional upload workflows for YouTube Shorts, TikTok, and Instagram Reels.
+Built with Bun + TypeScript, with AI-based clip identification and upload workflows for YouTube Shorts, TikTok, and Instagram Reels.
 
 ---
 
@@ -11,11 +11,9 @@ Built with Bun + TypeScript, with AI-based clip identification and optional uplo
 This repository is a **fork** of the original project:
 
 - Original (upstream): `https://github.com/ayush-that/jiang-clips`
-- Fork (this repo): `https://github.com/<your-username>/<your-repo>`
+- Fork (this repo): `https://github.com/AadilShrestha/ShortForge`
 
-If this repo URL differs from the placeholder above, replace it before publishing.
-
-You can also enable GitHub's native fork linkage in repository settings so GitHub displays "forked from ayush-that/jiang-clips" automatically.
+GitHub should also show native fork linkage (`forked from ayush-that/jiang-clips`) once repository metadata syncs.
 
 ---
 
@@ -165,6 +163,12 @@ bun run src/index.ts instagram-auth-url
 bun run src/index.ts instagram-auth-exchange <code>
 bun run src/index.ts upload-instagram-reels [--dir ./output]
 ```
+
+### Upload Automation Status
+- YouTube: upload automation is available now (OAuth + bulk upload commands and run-level upload workflow).
+- TikTok: upload/auth flows are available, with deeper end-to-end automation planned next.
+- Instagram: upload/auth flows are available, with deeper end-to-end automation planned next.
+
 
 ---
 
