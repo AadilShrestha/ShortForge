@@ -1,6 +1,16 @@
 import { Database } from "bun:sqlite";
 import { PipelineStage, StageStatus, type PipelineRun, type StageResult } from "./types";
 
+export interface ClipProgressSnapshot {
+  clipId: string;
+  clipIndex: number;
+  stage: PipelineStage;
+  status: string;
+  artifactPaths: Record<string, string>;
+  updatedAt: string;
+}
+
+
 export class CheckpointManager {
   private db: Database;
 
@@ -190,6 +200,31 @@ export class CheckpointManager {
       artifactPaths: JSON.parse(row.artifact_paths),
     };
   }
+
+  getRunClipProgress(runId: string): ClipProgressSnapshot[] {
+    const rows = this.db
+      .prepare(
+        "SELECT id, clip_index, current_stage, status, artifact_paths, updated_at FROM clip_progress WHERE run_id = ? ORDER BY clip_index ASC"
+      )
+      .all(runId) as Array<{
+      id: string;
+      clip_index: number;
+      current_stage: string;
+      status: string;
+      artifact_paths: string;
+      updated_at: string;
+    }>;
+
+    return rows.map((row) => ({
+      clipId: row.id,
+      clipIndex: row.clip_index,
+      stage: row.current_stage as PipelineStage,
+      status: row.status,
+      artifactPaths: JSON.parse(row.artifact_paths),
+      updatedAt: row.updated_at,
+    }));
+  }
+
 
   getIncompleteClipIds(runId: string): string[] {
     const rows = this.db

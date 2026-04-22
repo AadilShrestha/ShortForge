@@ -144,6 +144,7 @@ Environment variables validated via Zod in `src/config.ts`:
 - `WHISPER_MODEL` (tiny|base|small|medium|large, default: base)
 - `MAX_PARALLEL_CLIPS` (1-10, default: 3)
 - `SILENCE_THRESHOLD_DB` (default: -35)
+- `CLIP_MIN_DURATION_SEC`/`CLIP_MAX_DURATION_SEC` (default: 20-30)
 - `OUTPUT_WIDTH`/`OUTPUT_HEIGHT` (default: 1080x1920)
 
 ## Dependencies
